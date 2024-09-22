@@ -17,7 +17,7 @@
 /*
  * Author: Chi     Zhang , ETH Zurich (chizhang@iis.ee.ethz.ch)
  * Note:
- *      Here we ignore real calculation for matrix multiply
+ *      Here we only support integer for matrix multiply
  *      in order to accelerate simulation
  */
 
@@ -26,6 +26,9 @@
 #include <vp/itf/wire.hpp>
 #include <stdio.h>
 #include <iostream>
+#include <sstream>
+#include <string>
+#include <cstring>
 #include <vector>
 #include <list>
 #include <queue>
@@ -38,6 +41,16 @@ enum redmule_state {
     STORING,
     FINISHED,
     ACKNOWLEDGE
+};
+
+enum iter_instruction {
+    INSTR_LOAD_Y,
+    INSTR_LOAD_W,
+    INSTR_LOAD_W_COMPUTE,
+    INSTR_LOAD_X,
+    INSTR_STOR_Z,
+    INSTR_FORWARD_YZ,
+    INSTR_STOR_Z_FORWARD_YZ
 };
 
 
@@ -63,6 +76,9 @@ public:
     uint32_t get_preload_access_block_number();
     uint32_t get_storing_access_block_number();
     uint32_t get_routine_to_storing_latency();
+    void     process_iter_instruction();
+    void     process_compute();
+    void     print_array(void * ptr, uint32_t length);
 
     vp::Trace           trace;
     vp::IoSlave         input_itf;
@@ -78,6 +94,7 @@ public:
     uint32_t            fsm_timestamp;
     std::queue<uint32_t> pending_req_queue;
     int64_t             timer_start;
+    int64_t             cycle_start;
     int64_t             total_runtime;
     int64_t             num_matmul;
 
@@ -93,6 +110,9 @@ public:
     uint32_t            bandwidth;
     uint32_t            fold_tiles_mapping;
     uint32_t            compute_type;
+    uint32_t            LOCAL_BUFFER_H;
+    uint32_t            LOCAL_BUFFER_N;
+    uint32_t            LOCAL_BUFFER_W;
 
     //redmule registers
     uint32_t            m_size;
@@ -128,9 +148,19 @@ public:
     uint32_t            y_acc_block;
     uint32_t            z_acc_block;
     double              ideal_runtime;
+    uint32_t            iter_instruction;
+    uint32_t            iter_x_row_ptr;
+    uint32_t            iter_w_row_ptr;
+    uint32_t            iter_y_row_ptr;
+    uint32_t            iter_z_row_ptr;
 
     //redmule buffer
     uint8_t *           access_buffer;
+    uint8_t *           y_buffer_preload;
+    uint8_t *           w_buffer;
+    uint8_t *           x_buffer;
+    uint8_t *           z_buffer_compute;
+    uint8_t *           z_buffer_previos;
     
 };
 
@@ -161,6 +191,9 @@ LightRedmule::LightRedmule(vp::ComponentConf &config)
     this->fold_tiles_mapping= get_js_config()->get("fold_tiles_mapping")->get_int();
     this->compute_type      = get_js_config()->get("compute_type")->get_int();
     this->bandwidth         = this->tcdm_bank_width * this->tcdm_bank_number;
+    this->LOCAL_BUFFER_H    = this->ce_height;
+    this->LOCAL_BUFFER_N    = this->ce_width * (this->ce_pipe + 1);
+    this->LOCAL_BUFFER_W    = this->bandwidth / this->elem_size;
 
     //Initialize registers
     this->m_size            = 4;
@@ -196,9 +229,28 @@ LightRedmule::LightRedmule(vp::ComponentConf &config)
     this->y_acc_block       = 0;
     this->z_acc_block       = 0;
     this->ideal_runtime     = 0;
+    this->iter_instruction  = INSTR_LOAD_Y;
+    this->iter_x_row_ptr    = 0;
+    this->iter_w_row_ptr    = 0;
+    this->iter_y_row_ptr    = 0;
+    this->iter_z_row_ptr    = 0;
 
     //Initialize Buffers
     this->access_buffer     = new uint8_t[this->bandwidth * 2];
+    if (this->compute_type == 1)
+    {
+        this->y_buffer_preload  = new uint8_t [this->LOCAL_BUFFER_H * this->LOCAL_BUFFER_W * this->elem_size];
+        this->w_buffer          = new uint8_t [this->LOCAL_BUFFER_N * this->LOCAL_BUFFER_W * this->elem_size];
+        this->x_buffer          = new uint8_t [this->LOCAL_BUFFER_H * this->LOCAL_BUFFER_N * this->elem_size];
+        this->z_buffer_compute  = new uint8_t [this->LOCAL_BUFFER_H * this->LOCAL_BUFFER_W * this->elem_size];
+        this->z_buffer_previos  = new uint8_t [this->LOCAL_BUFFER_H * this->LOCAL_BUFFER_W * this->elem_size];
+    } else {
+        this->y_buffer_preload  = 0;
+        this->w_buffer          = 0;
+        this->x_buffer          = 0;
+        this->z_buffer_compute  = 0;
+        this->z_buffer_previos  = 0;
+    }
 
     //Initialize FSM
     this->state.set(IDLE);
@@ -209,6 +261,7 @@ LightRedmule::LightRedmule(vp::ComponentConf &config)
     this->fsm_counter       = 0;
     this->fsm_timestamp     = 0;
     this->timer_start       = 0;
+    this->cycle_start       = 0;
     this->total_runtime     = 0;
     this->num_matmul        = 0;
 
@@ -249,6 +302,11 @@ void LightRedmule::init_redmule_meta_data(){
     this->w_acc_block = 0;
     this->y_acc_block = 0;
     this->z_acc_block = 0;
+
+    this->iter_x_row_ptr = 0;
+    this->iter_w_row_ptr = 0;
+    this->iter_y_row_ptr = 0;
+    this->iter_z_row_ptr = 0;
 
     this->ideal_runtime = 1.0 * (this->m_size * this->n_size * this->k_size)/( 1.0 * this->ce_height * this->ce_width);
 }
@@ -315,30 +373,128 @@ uint32_t LightRedmule::next_addr(){
         this->iter_y_addr = this->inc_addr(addr, this->k_size, buffer_w);
         this->y_acc_block -= 1;
         this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule][Address] Y tile at 0x%11x | #Y tile left %d\n", addr, this->y_acc_block);
+        this->tcdm_req->set_is_write(0);
+        this->iter_instruction  = INSTR_LOAD_Y;
     } else if (this->w_acc_block > 0)
     {
         addr = this->iter_w_addr;
         this->iter_w_addr = this->inc_addr(addr, this->k_size, buffer_w);
         this->w_acc_block -= 1;
         this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule][Address] W tile at 0x%11x | #W tile left %d\n", addr, this->w_acc_block);
+        this->tcdm_req->set_is_write(0);
+        if (this->w_acc_block == 0)
+        {
+            this->iter_instruction  = INSTR_LOAD_W_COMPUTE;
+        } else {
+            this->iter_instruction  = INSTR_LOAD_W;
+        }
     } else if (this->x_acc_block > 0)
     {
         addr = this->iter_x_addr;
         this->iter_x_addr = this->inc_addr(addr, this->n_size, buffer_n);
         this->x_acc_block -= 1;
         this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule][Address] X tile at 0x%11x | #X tile left %d\n", addr, this->x_acc_block);
+        this->tcdm_req->set_is_write(0);
+        this->iter_instruction  = INSTR_LOAD_X;
     } else if (this->z_acc_block > 0)
     {
         addr = this->iter_z_addr;
         this->iter_z_addr = this->inc_addr(addr, this->k_size, buffer_w);
         this->z_acc_block -= 1;
         this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule][Address] Z tile at 0x%11x | #Z tile left %d\n", addr, this->z_acc_block);
+        this->tcdm_req->set_is_write(1);
+        if (this->z_acc_block == 0)
+        {
+            this->iter_instruction  = INSTR_STOR_Z_FORWARD_YZ;
+        } else {
+            this->iter_instruction  = INSTR_STOR_Z;
+        }
     } else {
         this->trace.fatal("[LightRedmule][Address] INVALID redmule address iteration : No tiles to access\n");
     }
 
     return addr;
+}
 
+void LightRedmule::print_array(void * ptr, uint32_t length){
+    uint16_t * data_ptr = (uint16_t *)ptr;
+    uint32_t elem_length = length/2;
+    std::ostringstream oss;
+    for (int i = 0; i < elem_length; ++i)
+    {
+        oss << data_ptr[i];
+        if (i < elem_length - 1)
+        {
+            oss << ",";
+        }
+    }
+    this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule][--Debug Array--]           %s \n",oss.str().c_str());
+}
+
+void LightRedmule::process_compute(){
+
+}
+
+void LightRedmule::process_iter_instruction(){
+
+    uint32_t buffer_h_byte = this->ce_height * this->elem_size;
+    uint32_t buffer_w_byte = this->ce_width * (this->ce_pipe + 1) * this->elem_size;
+    uint32_t buffer_n_byte = this->bandwidth;
+    switch(this->iter_instruction) {
+        case INSTR_LOAD_Y:
+            std::memcpy(&(this->y_buffer_preload[this->iter_y_row_ptr]), this->access_buffer, buffer_w_byte);
+            if (this->y_acc_block == 0)
+            {
+                this->iter_y_row_ptr = 0;
+            } else {
+                this->iter_y_row_ptr += buffer_w_byte;
+            }
+            break;
+        case INSTR_LOAD_W:
+            std::memcpy(&(this->w_buffer[this->iter_w_row_ptr]), this->access_buffer, buffer_w_byte);
+            this->iter_w_row_ptr += buffer_w_byte;
+            break;
+        case INSTR_LOAD_W_COMPUTE:
+            std::memcpy(&(this->w_buffer[this->iter_w_row_ptr]), this->access_buffer, buffer_w_byte);
+            this->process_compute();
+            this->iter_w_row_ptr = 0;
+            break;
+        case INSTR_LOAD_X:
+            std::memcpy(&(this->x_buffer[this->iter_x_row_ptr]), this->access_buffer, buffer_n_byte);
+            if (this->x_acc_block == 0)
+            {
+                this->iter_x_row_ptr = 0;
+            } else {
+                this->iter_x_row_ptr += buffer_n_byte;
+            }
+            break;
+        case INSTR_STOR_Z:
+            std::memcpy(this->access_buffer, &(this->z_buffer_previos[this->iter_z_row_ptr]), buffer_w_byte);
+            if (this->z_acc_block == 0)
+            {
+                this->iter_z_row_ptr = 0;
+            } else {
+                this->iter_z_row_ptr += buffer_w_byte;
+            }
+            break;
+        case INSTR_FORWARD_YZ:
+            std::memcpy(this->z_buffer_previos, this->z_buffer_compute, buffer_h_byte * buffer_w_byte);
+            std::memcpy(this->y_buffer_preload, this->z_buffer_previos, buffer_h_byte * buffer_w_byte);
+            break;
+        case INSTR_STOR_Z_FORWARD_YZ:
+            std::memcpy(this->access_buffer, &(this->z_buffer_previos[this->iter_z_row_ptr]), buffer_w_byte);
+            if (this->z_acc_block == 0)
+            {
+                this->iter_z_row_ptr = 0;
+            } else {
+                this->iter_z_row_ptr += buffer_w_byte;
+            }
+            std::memcpy(this->z_buffer_previos, this->z_buffer_compute, buffer_h_byte * buffer_w_byte);
+            std::memcpy(this->y_buffer_preload, this->z_buffer_previos, buffer_h_byte * buffer_w_byte);
+            break;
+        default:
+            break;
+    }
 }
 
 uint32_t LightRedmule::get_routine_access_block_number(){
@@ -504,7 +660,7 @@ vp::IoReqStatus LightRedmule::req(vp::Block *__this, vp::IoReq *req)
         *  Synchronize Trigger  *
         ************************/
         //Sanity Check
-        _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule] redmule configuration (M-N-K): %d, %d, %d\n", _this->m_size, _this->n_size, _this->k_size);
+        _this->trace.msg("[LightRedmule] redmule configuration (M-N-K): %d, %d, %d\n", _this->m_size, _this->n_size, _this->k_size);
         if ((_this->m_size == 0)||(_this->n_size == 0)||(_this->k_size == 0))
         {
             _this->trace.fatal("[LightRedmule] INVALID redmule configuration (M-N-K): %d, %d, %d\n", _this->m_size, _this->n_size, _this->k_size);
@@ -520,6 +676,7 @@ vp::IoReqStatus LightRedmule::req(vp::Block *__this, vp::IoReq *req)
         _this->fsm_counter      = 0;
         _this->fsm_timestamp    = 0;
         _this->timer_start      = _this->time.get_time();
+        _this->cycle_start      = _this->clock.get_cycles();
         _this->event_enqueue(_this->fsm_event, 1);
 
         //Save Query
@@ -531,7 +688,7 @@ vp::IoReqStatus LightRedmule::req(vp::Block *__this, vp::IoReq *req)
         *  Asynchronize Trigger  *
         *************************/
         //Sanity Check
-        _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule] redmule configuration (M-N-K): %d, %d, %d\n", _this->m_size, _this->n_size, _this->k_size);
+        _this->trace.msg("[LightRedmule] redmule configuration (M-N-K): %d, %d, %d\n", _this->m_size, _this->n_size, _this->k_size);
         if ((_this->m_size == 0)||(_this->n_size == 0)||(_this->k_size == 0))
         {
             _this->trace.fatal("[LightRedmule] INVALID redmule configuration (M-N-K): %d, %d, %d\n", _this->m_size, _this->n_size, _this->k_size);
@@ -547,6 +704,7 @@ vp::IoReqStatus LightRedmule::req(vp::Block *__this, vp::IoReq *req)
         _this->fsm_counter      = 0;
         _this->fsm_timestamp    = 0;
         _this->timer_start      = _this->time.get_time();
+        _this->cycle_start      = _this->clock.get_cycles();
         _this->event_enqueue(_this->fsm_event, 1);
 
     } else if ((is_write == 0) && (offset == 40) && (_this->redmule_query == NULL) && (_this->state.get() != IDLE)){
@@ -562,31 +720,31 @@ vp::IoReqStatus LightRedmule::req(vp::Block *__this, vp::IoReq *req)
         switch (offset) {
             case 0:
                 _this->m_size = value;
-                _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule] Set M size 0x%x)\n", value);
+                _this->trace.msg("[LightRedmule] Set M size 0x%x)\n", value);
                 break;
             case 4:
                 _this->n_size = value;
-                _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule] Set N size 0x%x)\n", value);
+                _this->trace.msg("[LightRedmule] Set N size 0x%x)\n", value);
                 break;
             case 8:
                 _this->k_size = value;
-                _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule] Set K size 0x%x)\n", value);
+                _this->trace.msg("[LightRedmule] Set K size 0x%x)\n", value);
                 break;
             case 12:
                 _this->x_addr = value;
-                _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule] Set X addr 0x%x)\n", value);
+                _this->trace.msg("[LightRedmule] Set X addr 0x%x)\n", value);
                 break;
             case 16:
                 _this->y_addr = value;
-                _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule] Set Y addr 0x%x)\n", value);
+                _this->trace.msg("[LightRedmule] Set Y addr 0x%x)\n", value);
                 break;
             case 20:
                 _this->z_addr = value;
-                _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule] Set Z addr 0x%x)\n", value);
+                _this->trace.msg("[LightRedmule] Set Z addr 0x%x)\n", value);
                 break;
             case 24:
                 _this->w_addr = value;
-                _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule] Set W addr 0x%x)\n", value);
+                _this->trace.msg("[LightRedmule] Set W addr 0x%x)\n", value);
                 break;
             case 32:
                 _this->trace.msg("[LightRedmule] write status\n");
@@ -634,6 +792,12 @@ void LightRedmule::fsm_handler(vp::Block *__this, vp::ClockEvent *event)
                     return;
                 }
 
+                //Process Data if Compute Enabled
+                if (_this->compute_type != 0)
+                {
+                    _this->process_iter_instruction();
+                }
+
                 //Counte on receiving cycle
                 uint32_t receive_stamp = _this->tcdm_req->get_latency() + _this->fsm_timestamp;
 
@@ -657,6 +821,13 @@ void LightRedmule::fsm_handler(vp::Block *__this, vp::ClockEvent *event)
                 _this->fsm_counter      = 0;
                 _this->fsm_timestamp    = 0;
                 _this->state.set(ROUTINE);
+
+                //Forward YZ at Preload->Routine if Compute Enabled
+                if (_this->compute_type != 0)
+                {
+                    _this->iter_instruction = INSTR_FORWARD_YZ;
+                    _this->process_iter_instruction();
+                }
             } else {
                 _this->state.set(PRELOAD);
             }
@@ -675,6 +846,12 @@ void LightRedmule::fsm_handler(vp::Block *__this, vp::ClockEvent *event)
                 _this->tcdm_req->set_data(_this->access_buffer);
                 _this->tcdm_req->set_size(_this->bandwidth);
 
+                //Process Data if Compute Enabled
+                if (_this->compute_type != 0 && (_this->iter_instruction == INSTR_STOR_Z ||_this->iter_instruction == INSTR_STOR_Z_FORWARD_YZ))
+                {
+                    _this->process_iter_instruction();
+                }
+
                 //Send request
                 vp::IoReqStatus err = _this->send_tcdm_req();
                 _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule][ROUTINE-ijk: %0d-%0d-%0d] --- Send TCDM req #%d\n", _this->iter_i, _this->iter_j, _this->iter_k, _this->fsm_counter);
@@ -683,6 +860,12 @@ void LightRedmule::fsm_handler(vp::Block *__this, vp::ClockEvent *event)
                 if (err != vp::IO_REQ_OK) {
                     _this->trace.fatal("[LightRedmule][ROUTINE-ijk: %0d-%0d-%0d] There was an error while reading/writing data\n", _this->iter_i, _this->iter_j, _this->iter_k);
                     return;
+                }
+
+                //Process Data if Compute Enabled
+                if (_this->compute_type != 0 && _this->iter_instruction != INSTR_STOR_Z && _this->iter_instruction != INSTR_STOR_Z_FORWARD_YZ)
+                {
+                    _this->process_iter_instruction();
                 }
 
                 //Counte on receiving cycle
@@ -749,6 +932,12 @@ void LightRedmule::fsm_handler(vp::Block *__this, vp::ClockEvent *event)
                 _this->tcdm_req->set_data(_this->access_buffer);
                 _this->tcdm_req->set_size(_this->bandwidth);
 
+                //Process Data if Compute Enabled
+                if (_this->compute_type != 0 && (_this->iter_instruction == INSTR_STOR_Z ||_this->iter_instruction == INSTR_STOR_Z_FORWARD_YZ))
+                {
+                    _this->process_iter_instruction();
+                }
+
                 //Send request
                 vp::IoReqStatus err = _this->send_tcdm_req();
                 _this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule][Storing] --- Send TCDM req #%d\n",_this->fsm_counter);
@@ -788,13 +977,13 @@ void LightRedmule::fsm_handler(vp::Block *__this, vp::ClockEvent *event)
                 int64_t start_time_ns   = (_this->timer_start)/1000;
                 int64_t end_time_ns     = (_this->time.get_time())/1000;
                 int64_t period_ns       = end_time_ns - start_time_ns;
-                double  period_uti      = (1.0 * _this->ideal_runtime)/(1.0 * period_ns);
+                int64_t period_clk      = _this->clock.get_cycles() - _this->cycle_start;
+                double  period_uti      = (1.0 * _this->ideal_runtime)/(1.0 * period_clk);
                 int64_t gemm_size       = 2 * (_this->m_size * _this->n_size + _this->n_size * _this->k_size + 2 * _this->m_size * _this->k_size);
                 double  redmul_eff      = period_uti * (1.0 * _this->ce_height * _this->ce_width) / (1.0 * gemm_size);
                 _this->total_runtime   += period_ns;
                 _this->num_matmul      += 1;
-                _this->trace.msg("[LightRedmule] Finished : %0d ns ---> %0d ns | period = %0d ns | uti = %0.3f | runtime = %0d ns | matmul id = %0d\n", start_time_ns, end_time_ns, period_ns, period_uti, _this->total_runtime, _this->num_matmul);
-                _this->trace.msg("[LightRedmule] Area : %d | Efficiency : %f \n", gemm_size*_this->elem_size ,redmul_eff);
+                _this->trace.msg("[LightRedmule] Finished : %0d ns ---> %0d ns | period = %0d ns (%0d cyc) | uti = %0.3f | runtime = %0d ns | GEMM id = %0d\n", start_time_ns, end_time_ns, period_ns, period_clk, period_uti, _this->total_runtime, _this->num_matmul);
             } else {
                 _this->state.set(STORING);
                 _this->event_enqueue(_this->fsm_event, 1);

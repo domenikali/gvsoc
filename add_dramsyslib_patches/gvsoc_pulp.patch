@@ -1,3 +1,13 @@
+diff --git a/.gitignore b/.gitignore
+index ba0430d..2a378f8 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1 +1,2 @@
+-__pycache__/
+\ No newline at end of file
++__pycache__/
++**/BUILD/
+\ No newline at end of file
 diff --git a/pulp/CMakeLists.txt b/pulp/CMakeLists.txt
 index e9710c1..afd60ec 100644
 --- a/pulp/CMakeLists.txt
@@ -46,7 +56,7 @@ index 259971a..00e541f 100644
              "mapping": {
                  "base": "0x10201400",
 diff --git a/pulp/chips/pulp_open/cluster.py b/pulp/chips/pulp_open/cluster.py
-index 7078c50..dc3c51a 100644
+index 7078c50..14d6ff7 100644
 --- a/pulp/chips/pulp_open/cluster.py
 +++ b/pulp/chips/pulp_open/cluster.py
 @@ -25,6 +25,7 @@ from pulp.timer.timer_v2 import Timer
@@ -91,7 +101,7 @@ index 7078c50..dc3c51a 100644
 +                    tcdm_bank_width     = 4,
 +                    tcdm_bank_number    = nb_l1_banks,
 +                    elem_size           = 2,
-+                    ce_height           = 12,
++                    ce_height           = 16,
 +                    ce_width            = 4,
 +                    ce_pipe             = 3)
 +
@@ -123,14 +133,38 @@ index 7078c50..dc3c51a 100644
          self.bind(icache_ctrl, 'enable', icache, 'enable')
          self.bind(icache_ctrl, 'flush', icache, 'flush')
 diff --git a/pulp/chips/pulp_open/l1_subsystem.py b/pulp/chips/pulp_open/l1_subsystem.py
-index 4a38b6e..05e5934 100644
+index 4a38b6e..0e71311 100644
 --- a/pulp/chips/pulp_open/l1_subsystem.py
 +++ b/pulp/chips/pulp_open/l1_subsystem.py
-@@ -123,6 +123,7 @@ class L1_subsystem(st.Component):
+@@ -19,6 +19,7 @@ from memory.memory import Memory
+ from interco.router import Router
+ from interco.converter import Converter
+ from pulp.cluster.l1_interleaver import L1_interleaver
++from pulp.light_redmule.hwpe_interco.hwpe_interleaver import HWPEInterleaver
+ import math
+ 
+ 
+@@ -67,6 +68,10 @@ class L1_subsystem(st.Component):
+         # L1 interleaver
+         interleaver = L1_interleaver(self, 'interleaver', nb_slaves=nb_l1_banks, nb_masters=l1_interleaver_nb_masters, interleaving_bits=2)
+ 
++        #HWPE Router and Interleaver
++        hpwe_router = Router(self, 'hwpe_router')
++        hwpe_interleaver = HWPEInterleaver(self, 'hwpe_interleaver', 1, nb_l1_banks, 4)
++
+         # EXT2LOC
+         ext2loc = Converter(self, 'ext2loc', output_width=4, output_align=4)
+ 
+@@ -123,6 +128,12 @@ class L1_subsystem(st.Component):
              self.bind(interleaver, 'out_%d' % i, l1_banks[i], 'input')
  
          self.bind(self, 'ne16_in', interleaver, 'in_%d' % (nb_pe + 4))
-+        self.bind(self, 'redmule_in', interleaver, 'in_%d' % (nb_pe + 4))
++        # self.bind(self, 'redmule_in', interleaver, 'in_%d' % (nb_pe + 4))
++        self.bind(self, 'redmule_in', hpwe_router, 'input')
++        hpwe_router.add_mapping('redmule_tcdm', **cluster._reloc_mapping(cluster.get_property('l1/mapping')))
++        self.bind(hpwe_router, 'redmule_tcdm', hwpe_interleaver, 'input')
++        for i in range(0, nb_l1_banks):
++            self.bind(hwpe_interleaver, 'out_%d' % i, l1_banks[i], 'input')
  
          for i in range(0, 4):
              self.bind(self, 'dma_in_%d' % i, interleaver, 'in_%d' % (nb_pe + i))

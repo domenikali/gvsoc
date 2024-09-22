@@ -108,3 +108,8 @@ dramsys_redmule_preparation: drmasys_apply_patch build-systemc build-dramsys bui
 update:
 	rm -rf add_dramsyslib_patches/light_redmule
 	cp -rf pulp/pulp/light_redmule add_dramsyslib_patches/
+	rm -rf add_dramsyslib_patches/light_redmule/test/BUILD
+	cd pulp && git diff > ../add_dramsyslib_patches/gvsoc_pulp.patch
+
+iter:
+	CXX=g++-11.2.0 CC=gcc-11.2.0 make run -C pulp/pulp/light_redmule/run

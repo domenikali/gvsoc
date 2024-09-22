@@ -38,7 +38,6 @@ jobs:
       - name: Run RedMule
         run: |
           source sourceme.sh
-          make configure -C pulp/pulp/light_redmule/run
           make run -C pulp/pulp/light_redmule/run
 
   # Removed due to no space left on eth machine

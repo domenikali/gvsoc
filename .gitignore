@@ -11,3 +11,4 @@ spiflash.bin
 third_party/
 trace_file.txt
 tx_uart.log
+add_dramsyslib_patches/light_redmule/test/BUILD*
