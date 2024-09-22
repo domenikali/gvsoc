@@ -1,5 +1,5 @@
-APP = redmule_test
-APP_SRCS += redmule_test.c
+APP = test
+APP_SRCS += test.c
 APP_CFLAGS += -O3 -g -Iinc
 
 #CONFIG_HYPERRAM=1

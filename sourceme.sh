@@ -20,6 +20,6 @@ export LD_LIBRARY_PATH=$SDK_HOME/third_party/DRAMSys:$LD_LIBRARY_PATH
 ##############################################################################
 export PULP_RISCV_GCC_TOOLCHAIN="$SDK_HOME/third_party/pulp-sdk/v1.0.16-pulp-riscv-gcc-centos-7"
 export GVSOC_PATH=$SDK_HOME
-export REDMULE_PATH=$SDK_HOME/pulp/pulp/redmule
+export REDMULE_PATH=$SDK_HOME/pulp/pulp/light_redmule
 export PULP_SDK_PATH=$SDK_HOME/third_party/pulp-sdk
-export TEST_PATH=$SDK_HOME/pulp/pulp/redmule/test
+export TEST_PATH=$SDK_HOME/pulp/pulp/light_redmule/test

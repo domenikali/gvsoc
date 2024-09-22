@@ -43,7 +43,7 @@ drmasys_apply_patch:
 	if cd pulp && git apply --check ../add_dramsyslib_patches/gvsoc_pulp.patch; then \
 		git apply ../add_dramsyslib_patches/gvsoc_pulp.patch;\
 	fi
-	cp -rfv add_dramsyslib_patches/redmule pulp/pulp/
+	cp -rfv add_dramsyslib_patches/light_redmule pulp/pulp/
 
 
 build-systemc: third_party/systemc_install/lib64/libsystemc.so
@@ -104,3 +104,7 @@ third_party/pulp-sdk:
 	tar -xvjf v1.0.16-pulp-riscv-gcc-centos-7.tar.bz2
 
 dramsys_redmule_preparation: drmasys_apply_patch build-systemc build-dramsys build-configs build-pulp_sdk
+
+update:
+	rm -rf add_dramsyslib_patches/light_redmule
+	cp -rf pulp/pulp/light_redmule add_dramsyslib_patches/

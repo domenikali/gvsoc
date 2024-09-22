@@ -1,5 +1,5 @@
 diff --git a/pulp/CMakeLists.txt b/pulp/CMakeLists.txt
-index e9710c1..799fbf9 100644
+index e9710c1..afd60ec 100644
 --- a/pulp/CMakeLists.txt
 +++ b/pulp/CMakeLists.txt
 @@ -16,4 +16,5 @@ add_subdirectory(soc_eu)
@@ -9,7 +9,7 @@ index e9710c1..799fbf9 100644
 -add_subdirectory(spatz)
 \ No newline at end of file
 +add_subdirectory(spatz)
-+add_subdirectory(redmule)
++add_subdirectory(light_redmule)
 \ No newline at end of file
 diff --git a/pulp/chips/pulp_open/cluster.json b/pulp/chips/pulp_open/cluster.json
 index 259971a..00e541f 100644
@@ -46,14 +46,14 @@ index 259971a..00e541f 100644
              "mapping": {
                  "base": "0x10201400",
 diff --git a/pulp/chips/pulp_open/cluster.py b/pulp/chips/pulp_open/cluster.py
-index 7078c50..ccd9347 100644
+index 7078c50..dc3c51a 100644
 --- a/pulp/chips/pulp_open/cluster.py
 +++ b/pulp/chips/pulp_open/cluster.py
 @@ -25,6 +25,7 @@ from pulp.timer.timer_v2 import Timer
  from pulp.cluster.cluster_control_v2 import Cluster_control
  from pulp.ne16.ne16 import Ne16
  from pulp.icache_ctrl.icache_ctrl_v2 import Icache_ctrl
-+from pulp.redmule.redmule import RedMule
++from pulp.light_redmule.light_redmule import LightRedmule
  
  
  def get_cluster_name(cid: int):
@@ -76,7 +76,7 @@ index 7078c50..ccd9347 100644
  
          # Timer
          timer = Timer(self, 'timer')
-@@ -124,6 +128,13 @@ class Cluster(st.Component):
+@@ -124,6 +128,21 @@ class Cluster(st.Component):
              # NE16
              ne16 = Ne16(self, 'ne16')
  
@@ -85,12 +85,20 @@ index 7078c50..ccd9347 100644
 +            import math
 +            l1_banking_factor = self.get_property('l1/banking_factor')
 +            nb_l1_banks = 1<<int(math.log(nb_pe * l1_banking_factor, 2.0))
-+            redmule = RedMule(self, 'redmule', nb_l1_banks)
++            # redmule = RedMule(self, 'redmule', nb_l1_banks)
++            redmule = LightRedmule(self, 'redmule',
++                    redmule_id          = 0,
++                    tcdm_bank_width     = 4,
++                    tcdm_bank_number    = nb_l1_banks,
++                    elem_size           = 2,
++                    ce_height           = 12,
++                    ce_width            = 4,
++                    ce_pipe             = 3)
 +
          # Icache controller
          icache_ctrl = Icache_ctrl(self, 'icache_ctrl')
      
-@@ -205,6 +216,10 @@ class Cluster(st.Component):
+@@ -205,6 +224,10 @@ class Cluster(st.Component):
              periph_ico.add_mapping('ne16', **self._reloc_mapping(self.get_property('peripherals/ne16/mapping')))
              self.bind(periph_ico, 'ne16', ne16, 'input')
  
@@ -101,16 +109,15 @@ index 7078c50..ccd9347 100644
          # MCHAN
          self.bind(mchan, 'ext_irq_itf', self, 'dma_irq')
          self.bind(mchan, 'ext_itf', cluster_ico, 'input')
-@@ -237,6 +252,13 @@ class Cluster(st.Component):
+@@ -237,6 +260,12 @@ class Cluster(st.Component):
  
              self.bind(ne16, 'out', l1, 'ne16_in')
  
 +        if has_redmule:
 +            # REDMULE
-+            for i in range(0, nb_pe):
-+                self.bind(redmule, 'irq', event_unit, 'in_event_%d_pe_%d' % (redmule_irq, i))
-+
-+            self.bind(redmule, 'out', l1, 'redmule_in')
++            # for i in range(0, nb_pe):
++            #     self.bind(redmule, 'irq', event_unit, 'in_event_%d_pe_%d' % (redmule_irq, i))
++            self.bind(redmule, 'tcdm', l1, 'redmule_in')
 +
          # Icache controller
          self.bind(icache_ctrl, 'enable', icache, 'enable')
