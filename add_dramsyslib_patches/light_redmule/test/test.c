@@ -13,9 +13,9 @@
 
 #define ERROR_THRES 0x09
 
-#define M_SIZE 64
-#define N_SIZE 64
-#define K_SIZE 64
+#define M_SIZE 16
+#define N_SIZE 16
+#define K_SIZE 16
 
 PI_L1 __attribute__((aligned(512))) uint16_t w [N_SIZE * K_SIZE];
 PI_L1 __attribute__((aligned(512))) uint16_t x [M_SIZE * N_SIZE];
@@ -31,6 +31,24 @@ void init_matmul_data(){
     for (int j = 0; j < K_SIZE; ++j)
     {
       y[i*M_SIZE + j] = i*M_SIZE + j;
+    }
+  }
+
+  //X matrix
+  for (int i = 0; i < M_SIZE; ++i)
+  {
+    for (int j = 0; j < N_SIZE; ++j)
+    {
+      x[i*M_SIZE + j] = j;
+    }
+  }
+
+  //W matrix
+  for (int i = 0; i < N_SIZE; ++i)
+  {
+    for (int j = 0; j < K_SIZE; ++j)
+    {
+      w[i*N_SIZE + j] = 1;
     }
   }
 }

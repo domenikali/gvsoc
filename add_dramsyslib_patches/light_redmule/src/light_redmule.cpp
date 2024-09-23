@@ -192,8 +192,8 @@ LightRedmule::LightRedmule(vp::ComponentConf &config)
     this->compute_type      = get_js_config()->get("compute_type")->get_int();
     this->bandwidth         = this->tcdm_bank_width * this->tcdm_bank_number;
     this->LOCAL_BUFFER_H    = this->ce_height;
-    this->LOCAL_BUFFER_N    = this->ce_width * (this->ce_pipe + 1);
-    this->LOCAL_BUFFER_W    = this->bandwidth / this->elem_size;
+    this->LOCAL_BUFFER_N    = this->bandwidth / this->elem_size;
+    this->LOCAL_BUFFER_W    = this->ce_width * (this->ce_pipe + 1);
 
     //Initialize registers
     this->m_size            = 4;
@@ -427,12 +427,21 @@ void LightRedmule::print_array(void * ptr, uint32_t length){
         {
             oss << ",";
         }
+        if (i % 16 == 15)
+        {
+            oss << "\n";
+        }
     }
     this->trace.msg(vp::Trace::LEVEL_TRACE,"[LightRedmule][--Debug Array--]           %s \n",oss.str().c_str());
 }
 
 void LightRedmule::process_compute(){
-
+    uint32_t buffer_h           = this->ce_height;
+    uint32_t buffer_w           = this->ce_width * (this->ce_pipe + 1);
+    uint32_t buffer_n           = this->bandwidth / this->elem_size;
+    this->print_array(this->z_buffer_compute, buffer_h * buffer_w * this->elem_size);
+    this->print_array(this->x_buffer, buffer_h * buffer_n * this->elem_size);
+    this->print_array(this->w_buffer, buffer_n * buffer_w * this->elem_size);
 }
 
 void LightRedmule::process_iter_instruction(){
@@ -440,6 +449,7 @@ void LightRedmule::process_iter_instruction(){
     uint32_t buffer_h_byte = this->ce_height * this->elem_size;
     uint32_t buffer_w_byte = this->ce_width * (this->ce_pipe + 1) * this->elem_size;
     uint32_t buffer_n_byte = this->bandwidth;
+    uint32_t buffer_yz_byte = this->ce_height * this->ce_width * (this->ce_pipe + 1) * this->elem_size;
     switch(this->iter_instruction) {
         case INSTR_LOAD_Y:
             std::memcpy(&(this->y_buffer_preload[this->iter_y_row_ptr]), this->access_buffer, buffer_w_byte);
@@ -478,8 +488,14 @@ void LightRedmule::process_iter_instruction(){
             }
             break;
         case INSTR_FORWARD_YZ:
-            std::memcpy(this->z_buffer_previos, this->z_buffer_compute, buffer_h_byte * buffer_w_byte);
-            std::memcpy(this->y_buffer_preload, this->z_buffer_previos, buffer_h_byte * buffer_w_byte);
+            // this->print_array(this->y_buffer_preload, buffer_yz_byte);
+            // this->print_array(this->z_buffer_compute, buffer_yz_byte);
+            // this->print_array(this->z_buffer_previos, buffer_yz_byte);
+            std::memcpy(this->z_buffer_previos, this->z_buffer_compute, buffer_yz_byte);
+            std::memcpy(this->z_buffer_compute, this->y_buffer_preload, buffer_yz_byte);
+            // this->print_array(this->y_buffer_preload, buffer_yz_byte);
+            // this->print_array(this->z_buffer_compute, buffer_yz_byte);
+            // this->print_array(this->z_buffer_previos, buffer_yz_byte);
             break;
         case INSTR_STOR_Z_FORWARD_YZ:
             std::memcpy(this->access_buffer, &(this->z_buffer_previos[this->iter_z_row_ptr]), buffer_w_byte);
@@ -489,8 +505,8 @@ void LightRedmule::process_iter_instruction(){
             } else {
                 this->iter_z_row_ptr += buffer_w_byte;
             }
-            std::memcpy(this->z_buffer_previos, this->z_buffer_compute, buffer_h_byte * buffer_w_byte);
-            std::memcpy(this->y_buffer_preload, this->z_buffer_previos, buffer_h_byte * buffer_w_byte);
+            std::memcpy(this->z_buffer_previos, this->z_buffer_compute, buffer_yz_byte);
+            std::memcpy(this->z_buffer_compute, this->y_buffer_preload, buffer_yz_byte);
             break;
         default:
             break;
