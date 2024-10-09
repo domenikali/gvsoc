@@ -83,6 +83,8 @@ class FlexClusterSystem(gvsoc.systree.Component):
                                         redmule_queue_depth =   arch.redmule_queue_depth,
                                         redmule_reg_base    =   arch.redmule_reg_base,
                                         redmule_reg_size    =   arch.redmule_reg_size,
+                                        mtxtran_reg_base    =   arch.mtxtran_reg_base,
+                                        mtxtran_reg_size    =   arch.mtxtran_reg_size,
                                         idma_outstand_txn   =   arch.idma_outstand_txn,
                                         idma_outstand_burst =   arch.idma_outstand_burst,
                                         num_cluster_x       =   arch.num_cluster_x,

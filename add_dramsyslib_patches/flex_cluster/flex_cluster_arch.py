@@ -29,7 +29,7 @@ class FlexClusterArch:
         self.cluster_tcdm_bank_nb    = 64
 
         self.cluster_tcdm_base       = 0x00000000
-        self.cluster_tcdm_size       = 0x00100000
+        self.cluster_tcdm_size       = 0x00400000
         self.cluster_tcdm_remote     = 0x30000000
 
         self.cluster_stack_base      = 0x10000000
@@ -45,8 +45,12 @@ class FlexClusterArch:
         self.redmule_ce_pipe         = 3
         self.redmule_elem_size       = 2
         self.redmule_queue_depth     = 1
-        self.redmule_reg_base        = 0x20020000
+        self.redmule_reg_base        = 0x20010000
         self.redmule_reg_size        = 0x00000200
+
+        #MtxTran
+        self.mtxtran_reg_base        = 0x20020000
+        self.mtxtran_reg_size        = 0x00000200
 
         #IDMA
         self.idma_outstand_txn       = 16
@@ -56,7 +60,7 @@ class FlexClusterArch:
         self.hbm_start_base          = 0xc0000000
         self.hbm_node_interleave     = 0x00100000
         self.num_hbm_ch_per_node     = 1
-        self.hbm_placement           = [4,0,0,0]
+        self.hbm_placement           = [4,0,0,4]
 
         #NoC
         self.noc_outstanding         = 64

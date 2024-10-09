@@ -2,6 +2,7 @@
 
 - [ ] Gloablly Align MNK notation with standard (N <-> K)
 - [ ] Matrix Transpose Engine Model
+	- [x] A Performance Model
 - [ ] Vector Engine Model
 - [ ] NoC collective operation support
 - [ ] Implement Kernel: Normalization
