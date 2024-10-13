@@ -22,6 +22,7 @@ import gvsoc.systree
 from pulp.chips.flex_cluster.cluster_registers import ClusterRegisters
 from pulp.chips.flex_cluster.light_redmule import LightRedmule
 from pulp.chips.flex_cluster.light_mtxtran import LightMtxTran
+from pulp.chips.flex_cluster.light_vecteng import LightVectEng
 from pulp.chips.flex_cluster.hwpe_interleaver import HWPEInterleaver
 from pulp.snitch.snitch_cluster.dma_interleaver import DmaInterleaver
 from pulp.chips.flex_cluster.flex_sync_mem import FlexSyncMem
@@ -58,6 +59,7 @@ class ClusterArch:
                         redmule_elem_size,  redmule_queue_depth,
                         redmule_reg_base,   redmule_reg_size,
                         mtxtran_reg_base,   mtxtran_reg_size,
+                        vecteng_reg_base,   vecteng_reg_size,
                         idma_outstand_txn,  idma_outstand_burst,
                         num_cluster_x,      num_cluster_y,
                         data_bandwidth,     num_redmule,
@@ -86,6 +88,9 @@ class ClusterArch:
 
         #MtxTran
         self.mtxtran_area           = Area(mtxtran_reg_base, mtxtran_reg_size)
+
+        #VectEng
+        self.vecteng_area           = Area(vecteng_reg_base, vecteng_reg_size)
 
         #IDMA
         self.idma_outstand_txn      = idma_outstand_txn
@@ -229,6 +234,12 @@ class ClusterUnit(gvsoc.systree.Component):
                                         tcdm_bank_number    = arch.tcdm.nb_tcdm_banks,
                                         elem_size           = arch.redmule_elem_size)
 
+        # VectEng
+        vecteng = LightVectEng(self, f'vecteng',
+                                        tcdm_bank_width     = arch.tcdm.bank_width,
+                                        tcdm_bank_number    = arch.tcdm.nb_tcdm_banks,
+                                        elem_size           = arch.redmule_elem_size)
+
         # Cluster peripherals
         cluster_registers = ClusterRegisters(self, 'cluster_registers',
             num_cluster_x=arch.num_cluster_x, num_cluster_y=arch.num_cluster_y, nb_cores=arch.nb_core,
@@ -278,6 +289,9 @@ class ClusterUnit(gvsoc.systree.Component):
 
         #binding to mtxtran
         narrow_axi.o_MAP(mtxtran.i_INPUT(), base=arch.mtxtran_area.base, size=arch.mtxtran_area.size, rm_base=True)
+
+        #binding to vecteng
+        narrow_axi.o_MAP(vecteng.i_INPUT(), base=arch.vecteng_area.base, size=arch.vecteng_area.size, rm_base=True)
 
         #binding back to instruction memory if access needs
         narrow_axi.o_MAP(instr_mem.i_INPUT(), base=arch.insn_area.base, size=arch.insn_area.size, rm_base=True)

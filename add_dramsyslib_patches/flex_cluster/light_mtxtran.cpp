@@ -129,6 +129,7 @@ vp::IoReqStatus LightMtxTran::req(vp::Block *__this, vp::IoReq *req)
         uint32_t num_transpose_tile_N 	= (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
         uint32_t runtime_per_tile 		= 2 * _this->bandwidth / _this->elem_size;
         uint32_t transpose_runtime		= num_transpose_tile_M * num_transpose_tile_N * runtime_per_tile;
+
         _this->timer_start      		= _this->time.get_time();
 
         //Save Query
