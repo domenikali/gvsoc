@@ -4,6 +4,7 @@
 - [ ] Matrix Transpose Engine Model
 	- [x] A Performance Model
 - [ ] Vector Engine Model
+	- [x] A Performance Model
 - [ ] NoC collective operation support
 - [ ] Implement Kernel: Normalization
 - [ ] Implement Kernel: Addition + Normalization
