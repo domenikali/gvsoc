@@ -137,28 +137,92 @@ vp::IoReqStatus LightVectEng::req(vp::Block *__this, vp::IoReq *req)
         if (offset == 0)
         {
             //max(x)
-            uint32_t num_load_per_row   = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
-            uint32_t num_store          = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
-            vecteng_runtime = num_load_per_row * _this->n_size + num_store + _this->red_latency;
+            uint32_t num_load_per_row   = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            uint32_t num_store          = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime = num_load_per_row * _this->m_size + num_store + _this->red_latency;
+
             _this->idx_vect_jobs = 0;
         } else
         if (offset == 4)
         {
-            //sum(exp(x-max))
-            uint32_t num_load_per_row   = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
-            uint32_t num_store          = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
-            vecteng_runtime    = 2 * num_load_per_row * _this->n_size + num_store + _this->alu_latency + _this->exp_latency + _this->red_latency;
+            //sum(x)
+            uint32_t num_load_per_row   = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            uint32_t num_store          = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime = num_load_per_row * _this->m_size + num_store + _this->red_latency;
+
             _this->idx_vect_jobs = 1;
         } else
         if (offset == 8)
         {
-            //exp(x-max)/s
-            uint32_t num_load_per_row   = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
-            uint32_t num_load_s         = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
-            vecteng_runtime    = 2 * 2 * num_load_per_row * _this->n_size  + num_load_s + _this->alu_latency + _this->exp_latency + _this->alu_latency;
+            //exp(x-max)
+            uint32_t num_load_per_row   = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            uint32_t num_load_max       = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            uint32_t num_store          = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime    = num_load_max + num_load_per_row * _this->m_size + num_store + _this->alu_latency + _this->exp_latency;
+
             _this->idx_vect_jobs = 2;
-        } else {
+        } else
+        if (offset == 12)
+        {
+            //mtx/s
+            uint32_t num_load_per_row   = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            uint32_t num_load_s         = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            uint32_t num_store_per_row  = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime    = num_load_s + (num_load_per_row + num_store_per_row) * _this->m_size + _this->alu_latency;
+
             _this->idx_vect_jobs = 3;
+        } else
+        if (offset == 16)
+        {
+            //mtx dotp v
+            uint32_t num_load_per_row   = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            uint32_t num_load_v         = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            uint32_t num_store_per_row  = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime    = num_load_v + (num_load_per_row + num_store_per_row) * _this->m_size + _this->alu_latency;
+
+            _this->idx_vect_jobs = 4;
+        } else
+        if (offset == 20)
+        {
+            //mtx add mtx
+            uint32_t num_load_per_row   = (_this->n_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime    = (num_load_per_row * 3) * _this->m_size + _this->alu_latency;
+
+            _this->idx_vect_jobs = 5;
+        } else
+        if (offset == 24)
+        {
+            //v dotp v
+            uint32_t num_load_v         = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime    = 3 * num_load_v + _this->alu_latency;
+
+            _this->idx_vect_jobs = 6;
+        } else
+        if (offset == 28)
+        {
+            //v add v
+            uint32_t num_load_v         = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime    = 3 * num_load_v + _this->alu_latency;
+
+            _this->idx_vect_jobs = 7;
+        } else
+        if (offset == 32)
+        {
+            //v max v
+            uint32_t num_load_v         = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime    = 3 * num_load_v + _this->alu_latency;
+
+            _this->idx_vect_jobs = 8;
+        } else
+        if (offset == 36)
+        {
+            //exp(v-v)
+            uint32_t num_load_v         = (_this->m_size * _this->elem_size + _this->bandwidth - 1) / _this->bandwidth;
+            vecteng_runtime    = 3 * num_load_v + _this->alu_latency + _this->exp_latency;
+
+            _this->idx_vect_jobs = 9;
+        } else {
+            _this->idx_vect_jobs = 10;
         }
         _this->timer_start = _this->time.get_time();
 
@@ -210,8 +274,15 @@ void LightVectEng::event_handler(vp::Block *__this, vp::ClockEvent *event) {
     _this->vecteng_query = NULL;
     switch (_this->idx_vect_jobs) {
             case 0:     _this->trace.msg("[LightVectEng] Job: max(x)\n"); break;
-            case 1:     _this->trace.msg("[LightVectEng] Job: sum(exp(x-max))\n"); break;
-            case 2:     _this->trace.msg("[LightVectEng] Job: exp(x-max)/s\n"); break;
+            case 1:     _this->trace.msg("[LightVectEng] Job: sum(x)\n"); break;
+            case 2:     _this->trace.msg("[LightVectEng] Job: exp(x-max)\n"); break;
+            case 3:     _this->trace.msg("[LightVectEng] Job: mtx/s\n"); break;
+            case 4:     _this->trace.msg("[LightVectEng] Job: mtx.v\n"); break;
+            case 5:     _this->trace.msg("[LightVectEng] Job: mtx+mtx\n"); break;
+            case 6:     _this->trace.msg("[LightVectEng] Job: v.v\n"); break;
+            case 7:     _this->trace.msg("[LightVectEng] Job: v+v\n"); break;
+            case 8:     _this->trace.msg("[LightVectEng] Job: max(v,v)\n"); break;
+            case 9:     _this->trace.msg("[LightVectEng] Job: exp(v-v)\n"); break;
             default:    _this->trace.msg("[LightVectEng] Invalid Job\n");
     }
     _this->trace.msg("[LightVectEng] Finished : %0d ns ---> %0d ns | period = %0d ns | runtime = %0d ns | id = %0d\n", start_time_ns, end_time_ns, period_ns, _this->total_runtime, _this->num_vect_jobs);
