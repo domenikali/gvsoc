@@ -57,6 +57,13 @@ inline void flex_pull_stack(){
     );
 }
 
+void flex_dma_1d(uint32_t src_addr, uint32_t dst_addr, size_t transfer_size){
+    flex_push_stack();
+    snrt_dma_start_1d(src_addr,dst_addr, transfer_size); //Start iDMA
+    snrt_dma_wait_all(); // Wait for iDMA Finishing
+    flex_pull_stack();
+}
+
 //Pattern: Round Shift Right
 void flex_dma_pattern_round_shift_right(uint32_t local_offset, uint32_t remote_offset, size_t transfer_size){
     FlexPosition pos = get_pos(flex_get_cluster_id());
