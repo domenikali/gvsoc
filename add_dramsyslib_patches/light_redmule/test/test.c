@@ -13,14 +13,29 @@
 
 #define ERROR_THRES 0x09
 
-#define M_SIZE 16
-#define N_SIZE 16
-#define K_SIZE 16
+#define M_SIZE 32
+#define N_SIZE 32
+#define K_SIZE 32
 
 PI_L1 __attribute__((aligned(512))) uint16_t w [N_SIZE * K_SIZE];
 PI_L1 __attribute__((aligned(512))) uint16_t x [M_SIZE * N_SIZE];
 PI_L1 __attribute__((aligned(512))) uint16_t y [M_SIZE * K_SIZE];
 PI_L1 __attribute__((aligned(512))) uint16_t z [M_SIZE * K_SIZE];
+PI_L1 __attribute__((aligned(512))) uint16_t c [M_SIZE * K_SIZE];
+
+void fma_uint16(uint16_t * z, uint16_t * y, uint16_t * x, uint16_t * w, uint16_t m_size, uint16_t n_size, uint16_t k_size){
+    for (int i = 0; i < m_size; ++i)
+    {
+        for (int j = 0; j < k_size; ++j)
+        {
+            z[i * k_size + j] = y[i * k_size + j];
+            for (int k = 0; k < n_size; ++k)
+            {
+                z[i * k_size + j] += x[i * n_size + k] * w[k * k_size + j];
+            }
+        }
+    }
+}
 
 
 void init_matmul_data(){
@@ -30,7 +45,10 @@ void init_matmul_data(){
   {
     for (int j = 0; j < K_SIZE; ++j)
     {
-      y[i*M_SIZE + j] = i*M_SIZE + j;
+      uint16_t row_id = j/16;
+      uint16_t col_id = i/16;
+      uint16_t mtx_id = col_id * ((K_SIZE + 15)/16) + row_id + 1;
+      y[i*K_SIZE + j] = mtx_id;
     }
   }
 
@@ -39,7 +57,10 @@ void init_matmul_data(){
   {
     for (int j = 0; j < N_SIZE; ++j)
     {
-      x[i*M_SIZE + j] = j;
+      uint16_t row_id = j/16;
+      uint16_t col_id = i/16;
+      uint16_t mtx_id = col_id * ((N_SIZE + 15)/16) + row_id + 1;
+      x[i*N_SIZE + j] = mtx_id;
     }
   }
 
@@ -48,8 +69,31 @@ void init_matmul_data(){
   {
     for (int j = 0; j < K_SIZE; ++j)
     {
-      w[i*N_SIZE + j] = 1;
+      uint16_t row_id = j/16;
+      uint16_t col_id = i/16;
+      uint16_t mtx_id = col_id * ((K_SIZE + 15)/16) + row_id + 1;
+      w[i*K_SIZE + j] = mtx_id;
     }
+  }
+
+  //C matrix
+  for (int i = 0; i < M_SIZE; ++i)
+  {
+    for (int j = 0; j < K_SIZE; ++j)
+    {
+      c[i*K_SIZE + j] = 0;
+    }
+  }
+}
+
+void display_matrix(uint16_t* ptr, uint16_t row, uint16_t col){
+  for (int i = 0; i < col; ++i)
+  {
+    for (int j = 0; j < row; ++j)
+    {
+      printf("%3d", ptr[i*row + j]);
+    }
+    printf("\n");
   }
 }
 
@@ -76,10 +120,25 @@ int run_test() {
   printf("    W addr: 0x%x\n", (uint32_t)w);
   printf("    Y addr: 0x%x\n", (uint32_t)y);
   printf("    Z addr: 0x%x\n", (uint32_t)z);
+
+  fma_uint16(c,y,x,w,M_SIZE,N_SIZE,K_SIZE);
+
+  printf("--- X matrix: \n");
+  display_matrix(x,N_SIZE,M_SIZE);
+
+  printf("--- Z matrix: \n");
+  display_matrix(z,K_SIZE,M_SIZE);
+
   pi_perf_start();
   light_redmule_trigger_async();
   light_redmule_trigger_wait();
   pi_perf_stop();
+
+  printf("--- Z matrix: \n");
+  display_matrix(z,K_SIZE,M_SIZE);
+
+  printf("--- C matrix: \n");
+  display_matrix(c,K_SIZE,M_SIZE);
   printf("%d cycles\n", pi_perf_read(PI_PERF_CYCLES));
 
   return 0;
