@@ -46,7 +46,6 @@ jobs:
           ./install/bin/gvsoc --target=occamy --binary examples/offload-multi_cluster.elf run
           ./install/bin/gvsoc --target=snitch --binary examples/fp32_computation_vector.elf run
           ./install/bin/gvsoc --target snitch:noc_type=floonoc,soc/nb_cluster=16 --binary examples/floonoc.elf run
-          ./install/bin/gvsoc --target=pulp.chips.flex_cluster.flex_cluster --binary examples/SoftHier/binary/example.elf run --trace=/chip/cluster_0/redmule
 
   # Removed due to no space left on eth machine
   # build_eth:

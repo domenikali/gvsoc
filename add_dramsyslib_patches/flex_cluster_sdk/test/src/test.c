@@ -7,6 +7,8 @@
 #include "kernels/llm_mha/llm_mha_flash_attention.h"
 #include "kernels/llm_mha/llm_mha_flatten_attention.h"
 
+#define ATTENTION_METHOD llm_mha_flatten_attention
+
 int main()
 {
     uint32_t eoc_val = 0;
@@ -17,9 +19,7 @@ int main()
     /*  Program Execution Region -- Start */
     /**************************************/
 
-    // llm_mha_flash_attention(32768, 4096, 128, 32, 8, 2);
-    llm_mha_flatten_attention(4096, 4096, 128, 1, 1, 2);
-    // llm_mha_rowflatten_attention(4096, 4096, 128, 32, 8, 2);
+    ATTENTION_METHOD(4096, 4096, 128, 32, 8, 2);
 
     /**************************************/
     /*  Program Execution Region -- Stop  */
@@ -27,5 +27,5 @@ int main()
     flex_global_barrier_xy();
     flex_timer_end();
     flex_eoc(eoc_val);
-	return 0;
+    return 0;
 }
