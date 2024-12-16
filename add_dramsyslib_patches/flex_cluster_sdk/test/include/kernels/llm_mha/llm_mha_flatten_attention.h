@@ -481,7 +481,7 @@ void llm_mha_flatten_attention(uint32_t sequence_length, uint32_t embedding_leng
 
     for (int i = 0; i < num_head * batch_size; ++i)
     {
-        llm_mha_flatten_attention_each_head_double_buffer_no_collective(T,D,elem_size);
+        llm_mha_flatten_attention_each_head_double_buffer(T,D,elem_size);
     }
 }
 

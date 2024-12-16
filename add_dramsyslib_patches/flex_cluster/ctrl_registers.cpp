@@ -34,12 +34,16 @@ public:
 private:
     static vp::IoReqStatus req(vp::Block *__this, vp::IoReq *req);
     static void wakeup_event_handler(vp::Block *__this, vp::ClockEvent *event);
+    void reset(bool active);
 
     vp::Trace trace;
     vp::IoSlave input_itf;
     vp::WireMaster<bool> barrier_ack_itf;
     vp::ClockEvent * wakeup_event;
     int64_t timer_start;
+
+    int64_t num_cluster_x;
+    int64_t num_cluster_y;
 };
 
 
@@ -54,12 +58,23 @@ CtrlRegisters::CtrlRegisters(vp::ComponentConf &config)
     this->new_master_port("barrier_ack", &this->barrier_ack_itf);
     this->wakeup_event = this->event_new(&CtrlRegisters::wakeup_event_handler);
     this->timer_start = 0;
+
+    this->num_cluster_x = get_js_config()->get("num_cluster_x")->get_int();
+    this->num_cluster_y = get_js_config()->get("num_cluster_y")->get_int();
+}
+
+void CtrlRegisters::reset(bool active)
+{
+    if (active)
+    {
+        std::cout << "[SystemInfo]: num_cluster_x = " << this->num_cluster_x << ", num_cluster_y = " << this->num_cluster_y << std::endl;
+    }
 }
 
 void CtrlRegisters::wakeup_event_handler(vp::Block *__this, vp::ClockEvent *event) {
     CtrlRegisters *_this = (CtrlRegisters *)__this;
     _this->barrier_ack_itf.sync(1);
-    _this->trace.msg("Control registers wake up signal work and write %d to barrier ack output\n", 1);
+    _this->trace.msg("Global Barrier at %d ns\n", _this->time.get_time()/1000);
 }
 
 

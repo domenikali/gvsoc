@@ -98,7 +98,8 @@ void gemm_systolic_wise_dma_access(GemmSystolicInfo info, uint32_t iter){
         {
             //YZ tile transfering
             flex_dma_async_1d(local(local_Y),hbm_south(pos.x,remote_Y), info.tile_size_byte_Y);
-            flex_dma_async_1d(local(local_Z),hbm_west(pos.y,remote_Z), info.tile_size_byte_Y);
+            flex_dma_async_wait_all();
+            flex_dma_async_1d(hbm_west(pos.y,remote_Z),local(local_Z), info.tile_size_byte_Y);
             flex_dma_async_wait_all();
         } else {
             //XW tile transfering

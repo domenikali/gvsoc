@@ -28,6 +28,7 @@
 #include <vector>
 #include <list>
 #include <queue>
+#include <string>
 
 class LightVectEng : public vp::Component
 {
@@ -271,19 +272,21 @@ void LightVectEng::event_handler(vp::Block *__this, vp::ClockEvent *event) {
     _this->total_runtime   += period_ns;
 	_this->num_vect_jobs   += 1;
     _this->vecteng_query->get_resp_port()->resp(_this->vecteng_query);
-    _this->vecteng_query = NULL;
+    _this->vecteng_query    = NULL;
+
+    std::string Job;
     switch (_this->idx_vect_jobs) {
-            case 0:     _this->trace.msg("[LightVectEng] Job: max(x)\n"); break;
-            case 1:     _this->trace.msg("[LightVectEng] Job: sum(x)\n"); break;
-            case 2:     _this->trace.msg("[LightVectEng] Job: exp(x-max)\n"); break;
-            case 3:     _this->trace.msg("[LightVectEng] Job: mtx/s\n"); break;
-            case 4:     _this->trace.msg("[LightVectEng] Job: mtx.v\n"); break;
-            case 5:     _this->trace.msg("[LightVectEng] Job: mtx+mtx\n"); break;
-            case 6:     _this->trace.msg("[LightVectEng] Job: v.v\n"); break;
-            case 7:     _this->trace.msg("[LightVectEng] Job: v+v\n"); break;
-            case 8:     _this->trace.msg("[LightVectEng] Job: max(v,v)\n"); break;
-            case 9:     _this->trace.msg("[LightVectEng] Job: exp(v-v)\n"); break;
-            default:    _this->trace.msg("[LightVectEng] Invalid Job\n");
+            case 0:     Job = "max(x)"; break;
+            case 1:     Job = "sum(x)"; break;
+            case 2:     Job = "exp(x-max)"; break;
+            case 3:     Job = "mtx/s"; break;
+            case 4:     Job = "mtx.v"; break;
+            case 5:     Job = "mtx+mtx"; break;
+            case 6:     Job = "v.v"; break;
+            case 7:     Job = "v+v"; break;
+            case 8:     Job = "max(v,v)"; break;
+            case 9:     Job = "exp(v-v)"; break;
+            default:    Job = "InValid Job";
     }
-    _this->trace.msg("[LightVectEng] Finished : %0d ns ---> %0d ns | period = %0d ns | runtime = %0d ns | id = %0d\n", start_time_ns, end_time_ns, period_ns, _this->total_runtime, _this->num_vect_jobs);
+    _this->trace.msg("[LightVectEng] Finished : %0d ns ---> %0d ns | Job = %s | period = %0d ns | runtime = %0d ns | id = %0d\n", start_time_ns, end_time_ns, Job.c_str(), period_ns, _this->total_runtime, _this->num_vect_jobs);
 }
