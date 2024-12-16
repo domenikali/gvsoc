@@ -6,7 +6,6 @@
 #include "flex_redmule.h"
 #include "kernels/llm_mha/llm_mha_flash_attention.h"
 #include "kernels/llm_mha/llm_mha_flatten_attention.h"
-#include "kernels/llm_mha/llm_mha_rowflatten_attention.h"
 
 int main()
 {
