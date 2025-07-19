@@ -5,6 +5,8 @@ import interco.router
 import utils.loader.loader
 import gvsoc.systree
 import gvsoc.runner
+import memory.pcm_mem
+import my_comp
 
 
 GAPY_TARGET = True
@@ -22,11 +24,20 @@ class Soc(gvsoc.systree.Component):
         # Main interconnect
         ico = interco.router.Router(self, 'ico')
 
+        # Custom components
+        comp = my_comp.MyComp(self, 'my_comp', value=0x12345678)
+        ico.o_MAP(comp.i_INPUT(), 'comp', base=0x20000000, size=0x00001000, rm_base=True)
+
+        pcm= memory.pcm_mem.Pcm(self, 'pcm')
+        ico.o_MAP(pcm.i_INPUT(), 'pcm', base=0x20001000, remove_offset=0x00000000, size=0x00001000, rm_base=True)
+
+
         # Main memory
         mem = memory.memory.Memory(self, 'mem', size=0x00100000)
         # The memory needs to be connected with a mpping. The rm_base is used to substract
         # the global address to the requests address so that the memory only gets a local offset.
         ico.o_MAP(mem.i_INPUT(), 'mem', base=0x00000000, size=0x00100000, rm_base=True)
+
 
         # Instantiates the main core and connect fetch and data to the interconnect
         host = cpu.iss.riscv.Riscv(self, 'host', isa='rv64imafdc')

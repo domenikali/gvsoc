@@ -13,12 +13,12 @@
 #include <string.h>
 #include "ctype.h"
 #include <limits.h>
-#include <sys/types.h>
+//#include <sys/types.h>
 
 #ifndef EOF
 #define EOF  -1
 #endif
-
+typedef int ssize_t;
 #define CONFIG_MINIMAL_LIBC_LL_PRINTF 1
 
 #ifdef CONFIG_MINIMAL_LIBC_LL_PRINTF
