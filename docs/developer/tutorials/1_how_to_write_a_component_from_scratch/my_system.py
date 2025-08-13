@@ -29,7 +29,7 @@ class Soc(gvsoc.systree.Component):
         ico.o_MAP(comp.i_INPUT(), 'comp', base=0x20000000, size=0x00001000, rm_base=True)
 
         pcm= memory.pcm_mem.Pcm(self, 'pcm')
-        ico.o_MAP(pcm.i_INPUT(), 'pcm', base=0x20001000, remove_offset=0x00000000, size=0x00002000, rm_base=True)
+        ico.o_MAP(pcm.i_INPUT(), 'pcm', base=0x20001000, remove_offset=0x00000000, size=0x200204, rm_base=True)
         
 
 
