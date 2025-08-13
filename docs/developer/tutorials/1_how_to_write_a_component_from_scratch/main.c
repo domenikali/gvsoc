@@ -85,54 +85,29 @@ int main(){
     return -1;
   }
 
-  //write and read value to the pcm Xi vector
-  //pcm_write_64(pcm->aimc_vector_addr, 0x00000000, 0x0101010101010101); 
-  // uint64_t value = pcm_read_64(pcm->aimc_vector_addr, 0x000000000);
-  // printf("Read value: 0x%xl\n", value);
-  //pcm_write_64(pcm->aimc_vector_addr, 0x00000000, 0x0101010101010101);
-  //printf("%ld\n",pcm_read_64(pcm->aimc_vector_addr, 0x00000000));
-  // //write and read to the pcm matrix
-  // pcm_write_64(pcm->pcm_matrix_addr, 0x00000000, 0x1010101010101010); 
-  // uint64_t val = pcm_read_64(pcm->pcm_matrix_addr, 0x00000000);
-  // printf("Read value: 0x%lx\n", val);
-
-
-
-  //pcm_write_32(pcm->pcm_matrix_addr, 0x00000000, 0x01010101);
-  //printf("Read value: 0x%x\n", pcm_read_32(pcm->pcm_matrix_addr, 0x00000000));
-
-  // pcm_write_32(pcm->pcm_addr, 0x00000000, 0x01010101);
-  // pcm_write_32(pcm->pcm_addr, 0x00000001, 0x01010101);
-  // pcm_write_32(pcm->pcm_addr, 0x00000002, 0x01010101);
-  // pcm_write_32(pcm->pcm_addr, 0x00000003, 0x01010101);
+  
   load_Xi_vect();
   load_pcm_matrix();
   
 
-  //set sectors       
-  uint32_t sectors = 0b00010000101010101010101000000000;  
-  pcm_write_32(pcm->aimc_cmd_addr,0x00000000,sectors);
-  //start computation
-  pcm_write_32(pcm->aimc_cmd_addr,0x00000000,AIMC_COMPUTE);
-
-  uint8_t *res =get_Yi();
-
-  for(size_t i=0;i<XI_VECTOR_SIZE;i++){
-    printf("Yi[%ld]: %d\n", i, res[i]);
-  }
-
-
-  /*
+  /*set sectors   
+  
      3                   2                   1                   0
    1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
   |  cmd  |sub cmd| arr 1 | arr 2 | arr 3 | arr 4 |     layers    | 
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-  */
-  
+  */    
+  uint32_t sectors = 0b00010000101010101010101000000000;  
+  pcm_write_32(pcm->aimc_cmd_addr,0x00000000,sectors);
+  //start computation
+  pcm_write_32(pcm->aimc_cmd_addr,0x00000000,AIMC_COMPUTE);
+ 
+  uint8_t *res =get_Yi();
 
-
-
+  for(size_t i=0;i<XI_VECTOR_SIZE;i++){
+    printf("Yi[%ld]: %d\n", i, res[i]);
+  }
 
   return 0;
 }
