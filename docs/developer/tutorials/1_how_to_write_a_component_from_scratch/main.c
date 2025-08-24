@@ -13,6 +13,17 @@
 #define AIMC_COMPUTE        0x00000000
 #define SECTOR_MASK         0x00FFFF00
 
+//aimc sub cmd
+#define SUBCMD_MASK         0x0F000000
+#define SUBCMD_SET_SECTORS  0x00000000
+#define SUBCMD_TWO_STEP_U   0x01000000
+#define SUBCMD_TWO_STEP_UDW 0x02000000
+#define SUBCMD_TWO_STEP_S   0x03000000
+#define SUBCMD_TWO_STEP_SDW 0x04000000
+#define SUBCMD_SINGLE_STEP  0x05000000
+#define SUBCMD_FAST_SS      0x06000000
+#define SUBCMD_PRECISION    0x07000000
+#define SUBCMD_BL           0x08000000
 //usefull macros for std module
 #define PCM_MATRIX_SIZE 0x200000
 #define XI_VECTOR_SIZE 0x200
@@ -65,6 +76,22 @@ void load_pcm_matrix(){
   }
 }
 
+void pcm_set_precision(pcm_t *pcm, uint8_t precision){
+  if(precision>7){
+    printf("Precision too high, setting to max 7 bits\n");
+    precision = 7;
+  }
+  if(precision==0)
+    printf("Edge case not handled\n");
+
+  uint32_t cmd = AIMC_SETTINGS | SUBCMD_PRECISION | precision;
+  pcm_write_32(pcm->aimc_cmd_addr,0x00000000,cmd);
+}
+
+void pcm_set_mode(pcm_t *pcm,uint32_t mode){
+  pcm_write_32(pcm->aimc_cmd_addr,0x00000000,AIMC_SETTINGS|mode);
+}
+
 uint8_t * get_Yi(){
   uint8_t *Yi = (uint8_t *)pi_malloc(XI_VECTOR_SIZE);
   for(size_t i=0;i<XI_VECTOR_SIZE/4;i++){
@@ -77,14 +104,7 @@ uint8_t * get_Yi(){
   return Yi;
 }
 
-int main(){   
-  pcm_t *pcm=init_pcm();
-  uint32_t *ad =(uint32_t*)(PCM_ADDR);
-  if (pcm == NULL) {
-    printf("Failed to initialize PCM\n");
-    return -1;
-  }
-
+void pcm_test(pcm_t *pcm){
   
   load_Xi_vect();
   load_pcm_matrix();
@@ -108,6 +128,19 @@ int main(){
   for(size_t i=0;i<XI_VECTOR_SIZE;i++){
     printf("Yi[%ld]: %d\n", i, res[i]);
   }
+  return 0;
+}
 
+int main(){   
+  pcm_t *pcm=init_pcm();
+  if (pcm == NULL) {
+    printf("Failed to initialize PCM\n");
+    return -1;
+  }
+
+  //pcm_test(pcm);
+  //pcm_set_precision(pcm, 1);
+  //pcm_set_mode(pcm, SUBCMD_FAST_SS);
+  
   return 0;
 }
