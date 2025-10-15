@@ -42,10 +42,10 @@ uint8_t check_resutl(uint8_t expected_val){
 
     if(res[i]!=expected_val){
       flag=1;
-      printf("Yi[%d]=%d\n",i,res[i]);
+      printf("Yi[%d] \tExpected:%d\tActual:%d\n",i,expected_val,res[i]);
     }
     else if (PCM_DEBUG){
-      printf("Yi[%d]=%d\n",i,res[i]);
+      printf("Yi[%d] \tExpected:%d\tActual:%d\n",i,expected_val,res[i]);
     }
   }
   pi_free(res,512*sizeof(uint8_t));
@@ -68,7 +68,7 @@ void test_simple_compute(pcm_t *pcm,uint32_t vector_val,uint32_t cell_val,uint32
   for(int i=0;i<4;++i){
     pcm_fill_sector(0,i,cell_val);
   }
-  (*load_v)(vector_val);
+  (*load_v)(vector_val); 
 
   uint32_t sectors = 0b00010000101010101010101000000001;  
   pcm_write_32(pcm->aimc_cmd_addr,0x00000000,sectors);
@@ -80,7 +80,118 @@ void test_simple_compute(pcm_t *pcm,uint32_t vector_val,uint32_t cell_val,uint32
   printf("Mode %s: %s",compute_names(mode), check_resutl(expected_val) == 0 ? SUCCESS : FAIL);
 
 }
+/**
+ * @brief Randomized test with matrix
+ * The idea of this test is to fill the crossbar with a pseudorandom sequence of value ranging from 0 to 15 and the input vector with the corrisponding signs. 
+ * As for the other tests the result is the sum of the matrix row with the signe of the input vector.
+ * Hoewever this time we put a zero in the diagonal of the matrix to make sure that the result is not biased by some other factos.
+ * To check the correctness we can simply take the expected value from the total sum of the input vector and subtract the value of the cell that is zeroed.
+ * This is done but, because we have to test both singed and unsigned, we have to change the way we calculate the expected result.
+ * In particular the expected result for the unsigned computations is a sum with the missing value not a subtraction like for the signed computations.
+ * @param pcm pointer to the memory locations
+ * @param vec_val pointer to the array of values to fill the input vector
+ * @param mode aimc computation mode (using double weight mode is useless in this test since just the first sector has values different from 0)
+ * @param expected_val expected value in the output vector
+ * @param unsigned_comp flag to specify if the computation is signed or unsigned (0 for signed, 1 for unsigned)
+ * @note Just for this testcase the expected value needs to be passed as signed casted to unsigned even with unsigned computations
+*/
+void random_test_matrix(pcm_t *pcm,int8_t*vec_val,uint32_t mode,uint8_t expected_val,int unsigned_comp){
 
+  uint8_t **v = (uint8_t **)pi_malloc(512*sizeof(uint8_t*));
+  int8_t *s=(int8_t *)pi_malloc(512*sizeof(int8_t));
+  //this bit fill the matrix with the values leaving the diagonal with 0s
+  for(int k=0;k<512;++k){
+    v[k]=(uint8_t *)pi_malloc(512*sizeof(uint8_t));
+    
+    for(int i=0;i<512;++i){
+      
+      if(vec_val[i]>=0){
+        v[k][i]=vec_val[i];
+        s[i]=1;
+      }
+      else{
+        v[k][i]=vec_val[i]*-1;
+        s[i]=-1;
+      }
+      if(i==k)v[k][i]=0;
+    }
+  }
+
+  for(int i=0;i<4;++i){
+    for(int j=0;j<128;++j){
+      for(int k=0;k<512;k+=4){
+        pcm_write_word(0,i,j,k,(v[i*128+j][k] & 0x000000FF) | ((v[i*128+j][k+1] & 0x000000FF) << 8) | ((v[i*128+j][k+2] & 0x000000FF) << 16) | ((v[i*128+j][k+3] & 0x000000FF) << 24));
+      }
+    }
+  }
+
+  for(int i=0;i<512;i+=4){
+    pcm_write_32(((uint32_t*)PCM_ADDR + AIMC_VECTOR_OFFSET), i/4, (s[i] & 0x000000FF) | ((s[i+1] & 0x000000FF) << 8) | ((s[i+2] & 0x000000FF) << 16) | ((s[i+3] & 0x000000FF) << 24));
+  }
+  //deallocate the auxiliary matrix
+  for(int i=0;i<512;++i){
+    pi_free(v[i],512*sizeof(uint8_t));
+  }
+  pi_free(v,512*sizeof(uint8_t*));
+  //deallocate the auxiliary sign vector
+  pi_free(s,512*sizeof(int8_t));
+
+  uint32_t sectors = 0b00010000101010101010101000000001;  
+  pcm_write_32(pcm->aimc_cmd_addr,0x00000000,sectors);
+
+  pcm_set_mode(mode);
+  pcm_compute(); 
+
+  uint8_t *res =pcm_get_Yi();
+
+  uint8_t flag=0;
+  //this is ugly but it works
+  //basicly we need to check if the computations is signed or unsigned because then we need to change the way we calculate the expected result
+  for(int i=0;i<512;++i){
+    int8_t temp;
+
+    if(!unsigned_comp){ 
+      if((int8_t)expected_val-vec_val[i]>=127)
+        temp=127;
+      else if((int8_t)expected_val-vec_val[i]<=-128)
+        temp=-128;
+      else
+        temp=(int8_t)expected_val-vec_val[i];
+    }
+    else{
+      if((int8_t)expected_val+vec_val[i]>=127)
+        temp=127;
+      else if((int8_t)expected_val+vec_val[i]<=-128)
+        temp=-128;
+      else
+        temp=(expected_val-vec_val[i])*((int8_t)expected_val>=0?1:-1);
+      
+    }
+    //this is the check
+    if((int8_t)res[i]!=temp){
+      flag=1;
+      printf("Yi[%d] \tExpected:%d\tActual:%d\n",i,temp,res[i]);
+    }
+    else if (PCM_DEBUG){
+      printf("Yi[%d] \tExpected:%d\tActual:%d\n",i,temp,res[i]);
+    }
+  }
+  
+  pi_free(res,512*sizeof(uint8_t));
+
+  printf("Mode %s: %s",compute_names(mode), flag == 0 ? SUCCESS : FAIL);
+
+}
+
+/**
+ * @brief Randomized test matrix
+ * The idea of this test is kind of the same of the previus however this time the crossbar is filled with random values from 0 to 15 and the input vector is filled with the corrisponding signs.
+ * Just like before the result is the sum of the matrix row with the signe of the input vector.
+ * @param pcm pointer to the memory locations
+ * @param vec_val pointer to the array of values to fill the input vector
+ * @param mode aimc computation mode 
+ * @param expected_val expected value in the output vector
+ */
 void random_test_2(pcm_t *pcm,int8_t*vec_val,uint32_t mode,uint8_t expected_val){
 
   uint8_t *v = (uint8_t *)pi_malloc(512*sizeof(uint8_t));
@@ -116,12 +227,19 @@ void random_test_2(pcm_t *pcm,int8_t*vec_val,uint32_t mode,uint8_t expected_val)
   pcm_set_mode(mode);
   pcm_compute(); 
 
-  
-
   printf("Mode %s: %s",compute_names(mode), check_resutl(expected_val) == 0 ? SUCCESS : FAIL);
 
 }
 
+/**
+ * @brief Randomized test
+ * The idea of this test is to fill the crossbar with 1s and the input vector with a random sequence of positive and negative numbers that will sum up to something in between -128 and 127.
+ * because the matrix only contains 1s the mvm can be easily calculated as the sum of the input vector
+ * @param pcm pointer to the memory locations
+ * @param vec_val pointer to the array of values to fill the input vector
+ * @param mode aimc computation mode 
+ * @param expected_val expected value in the output vector
+ */
 void random_test(pcm_t *pcm,int8_t*vec_val,uint32_t mode,uint8_t expected_val){
 
   for(int i=0;i<4;++i){
@@ -142,52 +260,6 @@ void random_test(pcm_t *pcm,int8_t*vec_val,uint32_t mode,uint8_t expected_val){
   printf("Mode %s: %s",compute_names(mode), check_resutl(expected_val) == 0 ? SUCCESS : FAIL);
 }
 
-void pcm_test(pcm_t *pcm){
-
-  
-  pcm_fill_sector(0,0,0x01010101);
-  pcm_fill_sector(0,1,0x01010101);
-  
-  pcm_fill_sector(0,2,0x01010101);
-  pcm_fill_sector(0,3,0x01010101);
-  // for(int i=0;i<512;++i){
-  //   for(int j=0;j<512;j+=4){
-  //     pcm_write_word(0,0,i,j,0x01010101);
-  //   }
-  // }
-
-  //load_pcm_matrix_1();
-  load_vector(0x00000001);
-
-
-  /*set sectors   
-  
-     3                   2                   1                   0
-   1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0
-  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-  |  cmd  |sub cmd| arr 1 | arr 2 | arr 3 | arr 4 |    precision  | 
-  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-  */    
-  uint32_t sectors = 0b00010000101010101010101000000000;  
-  pcm_write_32(pcm->aimc_cmd_addr,0x00000000,sectors);
-  //start computation
-  pcm_write_32(pcm->aimc_cmd_addr,0x00000000,AIMC_COMPUTE);
-  
-  uint8_t flag=0;
-  uint8_t *res =pcm_get_Yi();
-  for(int i=0;i<512;++i){
-    if(res[i]!=0x0){
-      printf("Yi[%d]=%d\n",i,res[i]);
-      // printf(SUCCESS);
-    }
-    else flag++;
-  }
-  if(flag)
-    printf(FAIL);
-  else  
-    printf(SUCCESS);  
-
-}
 
 void pcm_sector_test(pcm_t*pcm){
   printf("Sector test\n");
@@ -265,6 +337,19 @@ void run_all_tests(pcm_t *pcm){
   random_test_2(pcm,v4,SUBCMD_TWO_STEP_SDW|layers,172);
   random_test_2(pcm,v4,SUBCMD_TWO_STEP_UDW|layers,84);
 
+  printf("Positive randomised tests 3\n");
+  random_test_matrix(pcm,v3,SUBCMD_TWO_STEP_S,108,0);
+  random_test_matrix(pcm,v3,SUBCMD_TWO_STEP_U,108,1);
+  random_test_matrix(pcm,v3,SUBCMD_TWO_STEP_SDW|layers,108,0);
+  random_test_matrix(pcm,v3,SUBCMD_TWO_STEP_UDW|layers,108,1);
+
+  //just for this testcase it necessary to use the negative value of the result, can be checked by enabling the full output that the result of the unsigned is still correct
+  printf("Negative randomised tests 3:\n");
+  random_test_matrix(pcm,v4,SUBCMD_TWO_STEP_S,172,0);
+  random_test_matrix(pcm,v4,SUBCMD_TWO_STEP_U,172,1);
+  random_test_matrix(pcm,v4,SUBCMD_TWO_STEP_SDW|layers,172,0);
+  random_test_matrix(pcm,v4,SUBCMD_TWO_STEP_UDW|layers,172,1);
+
   printf("All tests done\n");
 }
 
@@ -275,21 +360,7 @@ int main(){
     return -1;
   }
 
-  //pcm_sector_test(pcm);
-
-  //pcm_set_precision(pcm, 1);
-  //pcm_set_mode(pcm, SUBCMD_FAST_SS);
-
-  //load_pcm_matrix();
-  uint16_t layers =0x0202;
-
-
   run_all_tests(pcm);
-  // uint16_t layers =0x0202;
-
-  // test_simple_compute(pcm,0x00000001,0x01010101,SUBCMD_TWO_STEP_SDW|layers,127,load_vector);  
-  //test_simple_compute(pcm,0x0000000FF,0x01010101,SUBCMD_TWO_STEP_U,64,load_vector_partial);
-
 
   return 0;
 }
