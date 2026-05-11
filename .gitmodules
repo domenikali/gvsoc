@@ -1,6 +1,7 @@
 [submodule "core"]
 	path = core
-	url = https://github.com/gvsoc/gvsoc-core.git
+	url = https://github.com/domenikali/gvsoc-core.git
+	branch = ld/mailbox
 [submodule "pulp"]
 	path = pulp
 	url = https://github.com/gvsoc/gvsoc-pulp.git

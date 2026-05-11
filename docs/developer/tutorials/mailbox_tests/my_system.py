@@ -6,6 +6,7 @@ import utils.loader.loader
 import gvsoc.systree
 import gvsoc.runner
 import devices.mailbox.mailbox
+import cpu.plic
 
 
 GAPY_TARGET = True
@@ -15,43 +16,50 @@ class Soc(gvsoc.systree.Component):
     def __init__(self, parent, name, parser):
         super().__init__(parent, name)
 
-        # Parse the arguments to get the path to the binary to be loaded
         [args, __] = parser.parse_known_args()
 
         binary = args.binary
 
-        # Main interconnect
         ico = interco.router.Router(self, 'ico')
 
-        # Custom components
-        comp = devices.mailbox.mailbox.Mailbox(self, 'mailbox', size = 10)
-        ico.o_MAP(comp.i_INPUT(), 'comp', base=0x20000000, size=0x00001000, rm_base=True)
-
-
-        # Main memory
         mem = memory.memory.Memory(self, 'mem', size=0x00100000)
-        # The memory needs to be connected with a mpping. The rm_base is used to substract
-        # the global address to the requests address so that the memory only gets a local offset.
         ico.o_MAP(mem.i_INPUT(), 'mem', base=0x00000000, size=0x00100000, rm_base=True)
 
-        # Instantiates the main core and connect fetch and data to the interconnect
-        host = cpu.iss.riscv.Riscv(self, 'host', isa='rv64imafdc')
-        host.o_FETCH     ( ico.i_INPUT     ())
-        host.o_DATA      ( ico.i_INPUT     ())
-        comp.o_RCV_IRQ(0,host.i_IRQ(3))
+        #PLIC:->
+        plic = cpu.plic.Plic(self, 'plic', ndev=32)
+        ico.o_MAP(plic.i_INPUT(), 'plic', base=0x0C000000, size=0x04000000, rm_base=True)
+
+        
+
+        # Mailbox
+        comp = devices.mailbox.mailbox.Mailbox(self, 'mailbox', size=10)
+        ico.o_MAP(comp.i_INPUT(), 'comp', base=0x20000000, size=0x00001000, rm_base=True)
+
+        #Mailbox to PLIC
+        comp.o_RCV_IRQ(1, plic.i_IRQ(0))
 
 
-        # Finally connect an ELF loader, which will execute first and will then
-        # send to the core the boot address and notify him he can start
+        #Core 0 -> sender
+        core0 = cpu.iss.riscv.Riscv(self, 'core0', isa='rv64imafdc', core_id=0)
+        core0.o_FETCH(ico.i_INPUT())
+        core0.o_DATA(ico.i_INPUT())
+        
+        plic.o_M_IRQ(core=0,itf=core0.i_IRQ(11))
+
+        # Core 1 -> receiver
+        core1 = cpu.iss.riscv.Riscv(self, 'core1', isa='rv64imafdc', core_id=1)
+        core1.o_FETCH(ico.i_INPUT())
+        core1.o_DATA(ico.i_INPUT())
+        plic.o_M_IRQ(core = 1,itf=core1.i_IRQ(11))
+
+        
         loader = utils.loader.loader.ElfLoader(self, 'loader', binary=binary)
-        loader.o_OUT     ( ico.i_INPUT     ())
-        loader.o_START   ( host.i_FETCHEN  ())
-        loader.o_ENTRY   ( host.i_ENTRY    ())
+        loader.o_OUT(ico.i_INPUT())
+        loader.o_START(core0.i_FETCHEN()) # Start Core 0
+        loader.o_START(core1.i_FETCHEN()) # Start Core 1
+        loader.o_ENTRY(core0.i_ENTRY())
+        loader.o_ENTRY(core1.i_ENTRY())
 
-
-
-# This is a wrapping component of the real one in order to connect a clock generator to it
-# so that it automatically propagate to other components
 class Rv64(gvsoc.systree.Component):
 
     def __init__(self, parent, name, parser, options):
@@ -63,9 +71,6 @@ class Rv64(gvsoc.systree.Component):
         clock.o_CLOCK    ( soc.i_CLOCK     ())
 
 
-
-
-# This is the top target that gapy will instantiate
 class Target(gvsoc.runner.Target):
 
     def __init__(self, parser, options):
