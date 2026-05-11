@@ -5,7 +5,7 @@ import interco.router
 import utils.loader.loader
 import gvsoc.systree
 import gvsoc.runner
-import mailbox
+import devices.mailbox.mailbox
 
 
 GAPY_TARGET = True
@@ -24,7 +24,7 @@ class Soc(gvsoc.systree.Component):
         ico = interco.router.Router(self, 'ico')
 
         # Custom components
-        comp = mailbox.Mailbox(self, 'mailbox', size = 10)
+        comp = devices.mailbox.mailbox.Mailbox(self, 'mailbox', size = 10)
         ico.o_MAP(comp.i_INPUT(), 'comp', base=0x20000000, size=0x00001000, rm_base=True)
 
 
