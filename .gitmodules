@@ -4,4 +4,4 @@
 	branch = ld/mailbox
 [submodule "pulp"]
 	path = pulp
-	url = https://github.com/gvsoc/gvsoc-pulp.git
+	url = https://github.com/PFocaccia/gvsoc-pulp.git

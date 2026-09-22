@@ -7,7 +7,11 @@ import gvsoc.systree
 import gvsoc.runner
 import devices.mailbox.mailbox
 import cpu.plic
+from pulp.snitch.snitch_cluster.snitch_cluster import ClusterArch, SnitchCluster
 
+
+class MinimalSnitchProperties:
+    nb_core_per_cluster = 2
 
 GAPY_TARGET = True
 
@@ -16,9 +20,12 @@ class Soc(gvsoc.systree.Component):
     def __init__(self, parent, name, parser):
         super().__init__(parent, name)
 
+        parser.add_argument("--cluster-binary", dest="cluster_binary",
+            default=None, help="ELF image loaded into the Snitch cluster")
         [args, __] = parser.parse_known_args()
 
         binary = args.binary
+        cluster_binary = args.cluster_binary
 
         ico = interco.router.Router(self, 'ico')
 
@@ -29,7 +36,18 @@ class Soc(gvsoc.systree.Component):
         plic = cpu.plic.Plic(self, 'plic', ndev=32)
         ico.o_MAP(plic.i_INPUT(), 'plic', base=0x0C000000, size=0x04000000, rm_base=True)
 
-        
+        #Snitch cluster
+        cluster_base = 0x50000000
+        cluster_code_base = 0x000f0000
+        cluster_arch = ClusterArch(MinimalSnitchProperties(), cluster_base, first_hartid=2, auto_fetch=False, boot_addr=cluster_code_base, isa='rv32imfdva')
+        cluster = SnitchCluster(self, 'snitch_cluster', cluster_arch, entry=cluster_code_base, auto_fetch=False)
+        cluster.o_NARROW_SOC(ico.i_INPUT())
+        cluster.o_WIDE_SOC(ico.i_INPUT())
+        ico.o_MAP(cluster.i_NARROW_INPUT(), 'snitch_cluster', base=cluster_base, size=0x00800000, rm_base=False)
+
+        cluster_loader = utils.loader.loader.ElfLoader(self, 'cluster_loader', binary=cluster_binary, entry=cluster_code_base)
+        cluster_loader.o_OUT(ico.i_INPUT())
+        cluster_loader.o_START(cluster.i_FETCHEN())
 
         # Mailbox
         comp = devices.mailbox.mailbox.Mailbox(self, 'mailbox', size=10)
@@ -43,6 +61,7 @@ class Soc(gvsoc.systree.Component):
         core0 = cpu.iss.riscv.Riscv(self, 'core0', isa='rv64imafdc', core_id=0)
         core0.o_FETCH(ico.i_INPUT())
         core0.o_DATA(ico.i_INPUT())
+        comp.o_RCV_IRQ(0, core0.i_IRQ(3))
         
         plic.o_M_IRQ(core=0,itf=core0.i_IRQ(11))
 
@@ -76,4 +95,3 @@ class Target(gvsoc.runner.Target):
     def __init__(self, parser, options):
         super(Target, self).__init__(parser, options,
             model=Rv64, description="RV64 virtual board")
-

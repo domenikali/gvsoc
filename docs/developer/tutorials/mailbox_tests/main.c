@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include "dma.h"
+
 #define MAILBOX_BASE 0x20000000
 #define PLIC_BASE    0x0C000000
 
@@ -27,6 +29,23 @@ volatile uint32_t* mbox_rcv_en  = (volatile uint32_t*)INT_RCV_EN;
 volatile uint32_t* mbox_letter0 = (volatile uint32_t*)LETTER_0;
 
 #define MSG 0x1EEDC0FF
+#define CLUSTER_REQUEST 0xCAFE0007
+#define CLUSTER_RESPONSE (LETTER_0)
+
+static int dma_compatibility_test(void) {
+    static uint32_t source = 0xD00DFEED;
+    static uint32_t destination;
+    dma_transfer_cfg_t transfer = {
+        .ext = (uint32_t)(uintptr_t)&source,
+        .loc = (uint32_t)(uintptr_t)&destination,
+        .length_1d_copy = sizeof(source),
+        .number_of_1d_copies = 1,
+        .dir = DMA_DIR_L1_TO_L2,
+    };
+
+    dma_transfer_1d_async(transfer);
+    return destination == source;
+}
 
 static inline uint64_t get_hartid() {
     uint64_t hartid;
@@ -127,15 +146,27 @@ int main() {
     } else if (hartid == 0) {//sender core
         printf("[Core 0] Booted. Preparing to send message...\n");
 
+        printf("[Core 0] Running local DMA compatibility check...\n");
+        printf("[Core 0] DMA compatibility check: %s\n",
+               dma_compatibility_test() ? "PASS" : "FAIL");
+
         for(volatile int i=0; i<10000; i++); 
 
         printf("[Core 0] Writing message to Mailbox 1...\n");
         volatile uint32_t* mbox_letter = (volatile uint32_t*)MBOX_1_LETTER0;
-        *mbox_letter = 0xCAFEBABE;
+        *mbox_letter = MSG;
 
         printf("[Core 0] Triggering Mailbox 1 Hardware IRQ...\n");
         volatile uint32_t* mbox_snd_set = (volatile uint32_t*)MBOX_1_SND_SET;
         *mbox_snd_set = 1;
+
+        printf("[Core 0] Sending square request to Snitch cluster...\n");
+        *(volatile uint32_t*)MBOX_1_LETTER0 = CLUSTER_REQUEST;
+        *mbox_snd_set = 1;
+
+        volatile uint32_t* cluster_response = (volatile uint32_t*)CLUSTER_RESPONSE;
+        for (volatile int i = 0; i < 1000000 && *cluster_response == 0; i++);
+        printf("[Core 0] Snitch cluster response: %s\n", *cluster_response == 49 ? "PASS (7 * 7 = 49)" : "FAIL");
         
         printf("[Core 0] Finished.\n");
         while(1);
